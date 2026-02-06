@@ -40,82 +40,78 @@
     #player-wrapper { width: 100%; height: 100%; display: none; }
     video { width: 100%; height: 100%; object-fit: contain; }
     .shaka-video-container { width: 100%; height: 100%; }
-    .shaka-live-button { display: flex !important; align-items: center !important; color: white !important; }
-    .shaka-live-button::before {
-      content: "";
-      width: 10px; height: 10px;
-      background-color: #ff0000;
-      border-radius: 50%;
-      margin-right: 8px;
-      display: inline-block;
-      animation: vgBlink 1.2s infinite;
-      box-shadow: 0 0 6px #ff0000;
-    }
-    @keyframes vgBlink {
-      0% { opacity: 1; }
-      50% { opacity: 0.3; }
-      100% { opacity: 1; }
-    }
+    
+    /* VG Style Controls */
     .shaka-range-container { background: #e50914 !important; }
     .shaka-volume-bar-container { background: #e50914 !important; }
-    .shaka-spinner-container { display: none !important; }
   </style>
 </head>
 <body>
+
   <div id="setup-screen">
     <div class="setup-box">
       <h1>VG Player</h1>
-      <input type="text" id="stream-url" placeholder="Enter Stream URL">
-      <button id="start-btn" onclick="startVG()">Play</button>
+      <input type="text" id="stream-url" placeholder="Paste your Link here...">
+      <button id="start-btn" onclick="startVG()">Play Stream</button>
       <p style="color:#666; font-size:11px; margin-top:20px; font-weight:bold; letter-spacing:1px;">Created By Vikash Gupta</p>
     </div>
   </div>
+
   <div id="player-wrapper">
     <div id="video-container">
       <video autoplay playsinline id="video-canvas"></video>
     </div>
   </div>
+
   <script>
     let player;
     let ui;
+
     async function startVG() {
-      const url = document.getElementById('stream-url').value;
+      let url = document.getElementById('stream-url').value.trim();
+      
       if (!url) return alert("Please enter a URL");
+
+      // --- THE FIX: AUTO-PROXY ---
+      // If the link is HTTP (Insecure), we force it through a Secure Proxy.
+      // This tricks GitHub/Browser into thinking it is a secure HTTPS link.
+      if (url.startsWith('http://')) {
+          console.log("Insecure HTTP detected. Adding Proxy...");
+          url = 'https://corsproxy.io/?' + url;
+      }
+
+      // Hide Setup, Show Player
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('player-wrapper').style.display = 'block';
+
+      // Init Shaka Player
       shaka.polyfill.installAll();
       const video = document.getElementById('video-canvas');
       const container = document.getElementById('video-container');
+      
       player = new shaka.Player(video);
       ui = new shaka.ui.Overlay(player, container, video);
+
+      // UI Config
       ui.configure({
         'controlPanelElements': [
-          'play_pause', 
-          'time_and_duration', 
-          'spacer', 
-          'mute', 
-          'volume', 
-          'picture_in_picture', 
-          'quality', 
-          'fullscreen'
+          'play_pause', 'time_and_duration', 'spacer', 'mute', 
+          'volume', 'picture_in_picture', 'quality', 'fullscreen'
         ],
-        'addBigPlayButton': false,
-        'seekBarColors': { base: 'rgba(255, 255, 255, 0.2)', played: '#e50914' },
-        'volumeBarColors': { base: 'rgba(255, 255, 255, 0.2)', level: '#e50914' }
+        'seekBarColors': { base: 'rgba(255, 255, 255, 0.2)', played: '#e50914' }
       });
+
+      // Player Config
       player.configure({
         streaming: { lowLatencyMode: true, useNativeHlsOnSafari: true }
       });
+
       try {
         await player.load(url);
-        const liveBtn = document.querySelector('.shaka-live-button');
-        if (liveBtn) {
-          liveBtn.addEventListener('click', () => {
-            video.currentTime = player.seekRange().end;
-          });
-        }
+        console.log("Video loaded successfully");
       } catch (e) {
-        alert("Error: Link invalid or CORS restricted.");
+        console.error("Error code", e.code, "object", e);
+        alert("Error: Link blocked or offline. Try a different stream.");
         location.reload();
       }
     }
