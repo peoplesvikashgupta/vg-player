@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VG Player (HLS)</title>
+  <title>VG Player</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -11,10 +11,8 @@
       background: #000; 
       height: 100%; width: 100%; 
       overflow: hidden; 
-      font-family: 'Segoe UI', sans-serif; 
-      color: white;
+      font-family: sans-serif; 
     }
-    
     /* Setup Screen */
     #setup-screen {
       position: fixed; inset: 0;
@@ -24,104 +22,84 @@
       z-index: 1000;
     }
     .setup-box {
-      width: 90%; max-width: 450px; text-align: center;
-      padding: 40px; background: #1a1a1a; border-radius: 12px;
-      border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      width: 90%; max-width: 400px; text-align: center;
+      padding: 30px; background: #222; border-radius: 10px;
+      border: 1px solid #333;
     }
-    h1 { color: #e50914; margin-bottom: 20px; font-weight: 900; letter-spacing: 1px; }
     input {
-      width: 100%; padding: 15px; background: #000; border: 1px solid #333;
-      border-radius: 4px; color: white; margin-bottom: 20px; outline: none; font-size: 14px;
+      width: 100%; padding: 12px; background: #000; border: 1px solid #e50914;
+      color: white; margin-bottom: 20px; outline: none; border-radius: 4px;
     }
-    input:focus { border-color: #e50914; }
-    button#start-btn {
-      width: 100%; padding: 15px; background: #e50914;
-      color: white; border: none; border-radius: 4px;
-      font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s;
+    button {
+      width: 100%; padding: 12px; background: #e50914;
+      color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 4px;
     }
-    button#start-btn:hover { background: #f40612; }
+    button:hover { background: #b0060e; }
     
-    /* Video Area */
-    #player-wrapper { width: 100%; height: 100%; display: none; }
-    video { width: 100%; height: 100%; outline: none; }
-    
-    /* Error Message */
-    #status-msg { margin-top: 15px; font-size: 12px; color: #666; min-height: 20px; }
+    /* Player */
+    #video { width: 100%; height: 100%; }
   </style>
 </head>
 <body>
 
   <div id="setup-screen">
     <div class="setup-box">
-      <h1>VG PLAYER</h1>
-      <input type="text" id="stream-url" placeholder="Paste your Link (.m3u8) here...">
-      <button id="start-btn" onclick="startPlayer()">Play Stream</button>
-      <div id="status-msg">Supports HTTP & HTTPS Links</div>
+      <h2 style="color:#e50914; margin-bottom:20px;">VG PLAYER</h2>
+      <input type="text" id="stream-url" placeholder="Paste Link (.m3u8)">
+      <button onclick="startPlayer()">PLAY</button>
     </div>
   </div>
 
-  <div id="player-wrapper">
-    <video id="video" controls autoplay playsinline></video>
-  </div>
+  <video id="video" controls autoplay playsinline></video>
 
   <script>
-    var video = document.getElementById('video');
-    var hls;
-
     function startPlayer() {
         var url = document.getElementById('stream-url').value.trim();
-        var msg = document.getElementById('status-msg');
+        if (!url) return alert("Please enter a URL");
 
-        if (!url) {
-            msg.style.color = 'red';
-            msg.innerText = "Please enter a valid URL.";
-            return;
-        }
-
-        // Hide setup, show player
+        // Hide setup screen
         document.getElementById('setup-screen').style.display = 'none';
-        document.getElementById('player-wrapper').style.display = 'flex';
+
+        var video = document.getElementById('video');
 
         // --- DEEP PROXY LOGIC ---
-        // If the URL is HTTP, we configure HLS.js to route EVERY request (playlist + chunks) via proxy
-        var useProxy = url.startsWith('http://');
-        
-        if (Hls.isSupported()) {
-            var config = {
-                // If using proxy, intercept all internal requests (xhr)
-                xhrSetup: function (xhr, u) {
-                    if (useProxy && u.startsWith('http://')) {
-                        xhr.open('GET', 'https://corsproxy.io/?' + u);
-                    }
+        // This intercepts every request (playlist & chunks) and routes it through a secure proxy
+        var config = {
+            xhrSetup: function (xhr, u) {
+                // If the URL being requested is HTTP, force it through the proxy
+                if (u.startsWith('http://')) {
+                    xhr.open('GET', 'https://corsproxy.io/?' + encodeURIComponent(u));
                 }
-            };
+            }
+        };
 
-            if (hls) hls.destroy();
-            hls = new Hls(config);
-
-            // Apply proxy to the main URL if needed
-            if (useProxy) {
-                url = 'https://corsproxy.io/?' + url;
+        if (Hls.isSupported()) {
+            var hls = new Hls(config); // Apply proxy config
+            
+            // If the main URL is HTTP, proxy it immediately
+            if (url.startsWith('http://')) {
+                url = 'https://corsproxy.io/?' + encodeURIComponent(url);
             }
 
             hls.loadSource(url);
             hls.attachMedia(video);
-            
             hls.on(Hls.Events.MANIFEST_PARSED, function() {
                 video.play();
             });
-
+            
             // Error Handling
             hls.on(Hls.Events.ERROR, function (event, data) {
                 if (data.fatal) {
-                    console.error("HLS Error:", data);
-                    alert("Playback Error: Stream might be offline or blocked.");
-                    location.reload();
+                    console.log("Error details:", data);
+                    alert("Stream blocked by browser security. Try opening this page in a standard window.");
                 }
             });
 
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Safari Fallback (Native HLS)
+            // Safari native HLS (Proxy manual fix)
+            if (url.startsWith('http://')) {
+                url = 'https://corsproxy.io/?' + encodeURIComponent(url);
+            }
             video.src = url;
             video.play();
         }
