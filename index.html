@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VG Player</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.ui.min.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/controls.min.css" crossorigin="anonymous">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { 
+      background: #000; 
+      height: 100%; width: 100%; 
+      overflow: hidden; 
+      font-family: 'Segoe UI', sans-serif; 
+    }
+    #setup-screen {
+      position: fixed; inset: 0;
+      background: #141414;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      z-index: 1000;
+    }
+    .setup-box {
+      width: 90%; max-width: 420px; text-align: center;
+      padding: 40px; background: #1a1a1a; border-radius: 15px;
+      border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    h1 { color: #e50914; margin-bottom: 20px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; }
+    input {
+      width: 100%; padding: 14px; background: #000; border: 1px solid #e50914;
+      border-radius: 6px; color: white; margin-bottom: 25px; outline: none; font-size: 1rem;
+    }
+    button#start-btn {
+      width: 100%; padding: 14px; background: #e50914;
+      color: white; border: none; border-radius: 6px;
+      font-weight: 900; cursor: pointer; text-transform: uppercase; transition: 0.3s;
+    }
+    button#start-btn:hover { background: #b20710; }
+    #player-wrapper { width: 100%; height: 100%; display: none; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    .shaka-video-container { width: 100%; height: 100%; }
+    .shaka-live-button { display: flex !important; align-items: center !important; color: white !important; }
+    .shaka-live-button::before {
+      content: "";
+      width: 10px; height: 10px;
+      background-color: #ff0000;
+      border-radius: 50%;
+      margin-right: 8px;
+      display: inline-block;
+      animation: vgBlink 1.2s infinite;
+      box-shadow: 0 0 6px #ff0000;
+    }
+    @keyframes vgBlink {
+      0% { opacity: 1; }
+      50% { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+    .shaka-range-container { background: #e50914 !important; }
+    .shaka-volume-bar-container { background: #e50914 !important; }
+    .shaka-spinner-container { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="setup-screen">
+    <div class="setup-box">
+      <h1>VG Player</h1>
+      <input type="text" id="stream-url" placeholder="Enter Stream URL">
+      <button id="start-btn" onclick="startVG()">Play</button>
+      <p style="color:#666; font-size:11px; margin-top:20px; font-weight:bold; letter-spacing:1px;">Created By Vikash Gupta</p>
+    </div>
+  </div>
+  <div id="player-wrapper">
+    <div id="video-container">
+      <video autoplay playsinline id="video-canvas"></video>
+    </div>
+  </div>
+  <script>
+    let player;
+    let ui;
+    async function startVG() {
+      const url = document.getElementById('stream-url').value;
+      if (!url) return alert("Please enter a URL");
+      document.getElementById('setup-screen').style.display = 'none';
+      document.getElementById('player-wrapper').style.display = 'block';
+      shaka.polyfill.installAll();
+      const video = document.getElementById('video-canvas');
+      const container = document.getElementById('video-container');
+      player = new shaka.Player(video);
+      ui = new shaka.ui.Overlay(player, container, video);
+      ui.configure({
+        'controlPanelElements': [
+          'play_pause', 
+          'time_and_duration', 
+          'spacer', 
+          'mute', 
+          'volume', 
+          'picture_in_picture', 
+          'quality', 
+          'fullscreen'
+        ],
+        'addBigPlayButton': false,
+        'seekBarColors': { base: 'rgba(255, 255, 255, 0.2)', played: '#e50914' },
+        'volumeBarColors': { base: 'rgba(255, 255, 255, 0.2)', level: '#e50914' }
+      });
+      player.configure({
+        streaming: { lowLatencyMode: true, useNativeHlsOnSafari: true }
+      });
+      try {
+        await player.load(url);
+        const liveBtn = document.querySelector('.shaka-live-button');
+        if (liveBtn) {
+          liveBtn.addEventListener('click', () => {
+            video.currentTime = player.seekRange().end;
+          });
+        }
+      } catch (e) {
+        alert("Error: Link invalid or CORS restricted.");
+        location.reload();
+      }
+    }
+  </script>
+</body>
+</html>
