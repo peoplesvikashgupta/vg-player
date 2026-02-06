@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VG Player</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.ui.min.js" crossorigin="anonymous"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/controls.min.css" crossorigin="anonymous">
+  <title>VG Player (HLS)</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body, html { 
@@ -13,7 +12,10 @@
       height: 100%; width: 100%; 
       overflow: hidden; 
       font-family: 'Segoe UI', sans-serif; 
+      color: white;
     }
+    
+    /* Setup Screen */
     #setup-screen {
       position: fixed; inset: 0;
       background: #141414;
@@ -22,98 +24,107 @@
       z-index: 1000;
     }
     .setup-box {
-      width: 90%; max-width: 420px; text-align: center;
-      padding: 40px; background: #1a1a1a; border-radius: 15px;
-      border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      width: 90%; max-width: 450px; text-align: center;
+      padding: 40px; background: #1a1a1a; border-radius: 12px;
+      border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
     }
-    h1 { color: #e50914; margin-bottom: 20px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; }
+    h1 { color: #e50914; margin-bottom: 20px; font-weight: 900; letter-spacing: 1px; }
     input {
-      width: 100%; padding: 14px; background: #000; border: 1px solid #e50914;
-      border-radius: 6px; color: white; margin-bottom: 25px; outline: none; font-size: 1rem;
+      width: 100%; padding: 15px; background: #000; border: 1px solid #333;
+      border-radius: 4px; color: white; margin-bottom: 20px; outline: none; font-size: 14px;
     }
+    input:focus { border-color: #e50914; }
     button#start-btn {
-      width: 100%; padding: 14px; background: #e50914;
-      color: white; border: none; border-radius: 6px;
-      font-weight: 900; cursor: pointer; text-transform: uppercase; transition: 0.3s;
+      width: 100%; padding: 15px; background: #e50914;
+      color: white; border: none; border-radius: 4px;
+      font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s;
     }
-    button#start-btn:hover { background: #b20710; }
-    #player-wrapper { width: 100%; height: 100%; display: none; }
-    video { width: 100%; height: 100%; object-fit: contain; }
-    .shaka-video-container { width: 100%; height: 100%; }
+    button#start-btn:hover { background: #f40612; }
     
-    /* VG Style Controls */
-    .shaka-range-container { background: #e50914 !important; }
-    .shaka-volume-bar-container { background: #e50914 !important; }
+    /* Video Area */
+    #player-wrapper { width: 100%; height: 100%; display: none; }
+    video { width: 100%; height: 100%; outline: none; }
+    
+    /* Error Message */
+    #status-msg { margin-top: 15px; font-size: 12px; color: #666; min-height: 20px; }
   </style>
 </head>
 <body>
 
   <div id="setup-screen">
     <div class="setup-box">
-      <h1>VG Player</h1>
-      <input type="text" id="stream-url" placeholder="Paste your Link here...">
-      <button id="start-btn" onclick="startVG()">Play Stream</button>
-      <p style="color:#666; font-size:11px; margin-top:20px; font-weight:bold; letter-spacing:1px;">Created By Vikash Gupta</p>
+      <h1>VG PLAYER</h1>
+      <input type="text" id="stream-url" placeholder="Paste your Link (.m3u8) here...">
+      <button id="start-btn" onclick="startPlayer()">Play Stream</button>
+      <div id="status-msg">Supports HTTP & HTTPS Links</div>
     </div>
   </div>
 
   <div id="player-wrapper">
-    <div id="video-container">
-      <video autoplay playsinline id="video-canvas"></video>
-    </div>
+    <video id="video" controls autoplay playsinline></video>
   </div>
 
   <script>
-    let player;
-    let ui;
+    var video = document.getElementById('video');
+    var hls;
 
-    async function startVG() {
-      let url = document.getElementById('stream-url').value.trim();
-      
-      if (!url) return alert("Please enter a URL");
+    function startPlayer() {
+        var url = document.getElementById('stream-url').value.trim();
+        var msg = document.getElementById('status-msg');
 
-      // --- THE FIX: AUTO-PROXY ---
-      // If the link is HTTP (Insecure), we force it through a Secure Proxy.
-      // This tricks GitHub/Browser into thinking it is a secure HTTPS link.
-      if (url.startsWith('http://')) {
-          console.log("Insecure HTTP detected. Adding Proxy...");
-          url = 'https://corsproxy.io/?' + url;
-      }
+        if (!url) {
+            msg.style.color = 'red';
+            msg.innerText = "Please enter a valid URL.";
+            return;
+        }
 
-      // Hide Setup, Show Player
-      document.getElementById('setup-screen').style.display = 'none';
-      document.getElementById('player-wrapper').style.display = 'block';
+        // Hide setup, show player
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('player-wrapper').style.display = 'flex';
 
-      // Init Shaka Player
-      shaka.polyfill.installAll();
-      const video = document.getElementById('video-canvas');
-      const container = document.getElementById('video-container');
-      
-      player = new shaka.Player(video);
-      ui = new shaka.ui.Overlay(player, container, video);
+        // --- DEEP PROXY LOGIC ---
+        // If the URL is HTTP, we configure HLS.js to route EVERY request (playlist + chunks) via proxy
+        var useProxy = url.startsWith('http://');
+        
+        if (Hls.isSupported()) {
+            var config = {
+                // If using proxy, intercept all internal requests (xhr)
+                xhrSetup: function (xhr, u) {
+                    if (useProxy && u.startsWith('http://')) {
+                        xhr.open('GET', 'https://corsproxy.io/?' + u);
+                    }
+                }
+            };
 
-      // UI Config
-      ui.configure({
-        'controlPanelElements': [
-          'play_pause', 'time_and_duration', 'spacer', 'mute', 
-          'volume', 'picture_in_picture', 'quality', 'fullscreen'
-        ],
-        'seekBarColors': { base: 'rgba(255, 255, 255, 0.2)', played: '#e50914' }
-      });
+            if (hls) hls.destroy();
+            hls = new Hls(config);
 
-      // Player Config
-      player.configure({
-        streaming: { lowLatencyMode: true, useNativeHlsOnSafari: true }
-      });
+            // Apply proxy to the main URL if needed
+            if (useProxy) {
+                url = 'https://corsproxy.io/?' + url;
+            }
 
-      try {
-        await player.load(url);
-        console.log("Video loaded successfully");
-      } catch (e) {
-        console.error("Error code", e.code, "object", e);
-        alert("Error: Link blocked or offline. Try a different stream.");
-        location.reload();
-      }
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                video.play();
+            });
+
+            // Error Handling
+            hls.on(Hls.Events.ERROR, function (event, data) {
+                if (data.fatal) {
+                    console.error("HLS Error:", data);
+                    alert("Playback Error: Stream might be offline or blocked.");
+                    location.reload();
+                }
+            });
+
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Safari Fallback (Native HLS)
+            video.src = url;
+            video.play();
+        }
     }
   </script>
 </body>
